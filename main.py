@@ -56,6 +56,7 @@ def load_config(config_path="config.ini"):
     # Parse [paths] section
     if config.has_section("paths"):
         config_data["source_base"] = config.get("paths", "source_base", fallback=None)
+        config_data["minecraft_path"] = config.get("paths", "minecraft_path", fallback=None)
 
     # Parse [folders] section
     if config.has_section("folders"):
@@ -89,6 +90,8 @@ def backup_folder(target_folder: Path, retention_policy: int = 3):
         reverse=True
     )
     
+    print(f"Backup created: {backup_path}")
+
     # Remove excess backups
     for backup in existing_backups[retention_policy:]:
         shutil.rmtree(backup, ignore_errors=True)
@@ -225,15 +228,15 @@ def main():
     print("===================")
     
     try:
-        # Parse CLI arguments
-        # TODO: Implement CLI parsing when needed
         
         # Load config
         config = load_config()
+
+        # Parse CLI arguments
+        # TODO: Implement CLI parsing when needed
         
         # Detect Minecraft path
         minecraft_path = detect_minecraft_path()
-        print(f"Detected Minecraft path: {minecraft_path}")
 
         # Use current working directory if source_base is not set
         source_base = config["source_base"] or Path(config["source_base"])
@@ -242,11 +245,11 @@ def main():
             "source_base": source_base
         }
         
+        print(f"Using source base: {source_base}")
+        print(f"Using Minecraft path: {minecraft_path}")
+
         # Validate paths and disk space
         validate_paths(paths)  # TODO: Uncomment when ready
-        
-        
-        source_base = Path(config["source_base"])
         
         # Backup original folders and sync
         folder_types = ["mods", "resourcepacks", "shaderpacks"]
