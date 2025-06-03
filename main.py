@@ -221,7 +221,9 @@ def parse_cli_args():
     pass  # TODO: Implement CLI parsing
 
 def main():
-    print("Minecraft Sync - Work in Progress")
+    print("Minecraft Sync Tool")
+    print("===================")
+    
     try:
         # Parse CLI arguments
         # TODO: Implement CLI parsing when needed
