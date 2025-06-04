@@ -6,7 +6,61 @@ import shutil
 import configparser
 from time import sleep
 import colorama
+import subprocess
+# import sys
 
+MINECRAFT_VERSION = "1.21.5"
+
+def install_fabric(path):
+    """
+    Install Fabric mod loader for Minecraft.
+    This function should handle downloading and installing Fabric.
+    """
+    # Load config to check if fabric installation is enabled
+    config = configparser.ConfigParser()
+    config.read("config.ini")
+
+    # Check if fabric installation is enabled in config
+    if config.has_section("extras") and config.getboolean("extras", "install_fabric", fallback=False):
+        print(colorama.Fore.YELLOW + "[+] Fabric installation enabled in config")
+        
+        # Look for fabric installer jar in assets folder
+        assets_folder = Path("assets")
+        fabric_jar = None
+        
+        if assets_folder.exists():
+            # Find fabric installer jar file
+            fabric_jars = list(assets_folder.glob("fabric-installer*.jar"))
+            if fabric_jars:
+                fabric_jar = fabric_jars[0]  # Use first found
+            else:
+                print(colorama.Fore.RED + "[!] No Fabric installer jar found in assets folder")
+                return
+        else:
+            print(colorama.Fore.RED + "[!] Assets folder not found")
+            return
+        
+        try:
+            # Execute fabric installer jar
+            command = ["java", "-jar", str(fabric_jar), "client", "-dir", str(path), "-mcversion", MINECRAFT_VERSION]
+            print(colorama.Fore.CYAN + f"[+] Executing command: {' '.join(command)}")
+            
+            result = subprocess.run(command, capture_output=True, text=True, check=True)
+            
+            if result.stderr:
+                print(colorama.Fore.YELLOW + f"[+] Errors: {result.stderr}")
+            
+            print(colorama.Fore.GREEN + "[✓] Fabric installer executed successfully")
+        except subprocess.CalledProcessError as e:
+            print(colorama.Fore.RED + f"[!] Fabric installer failed: {e}")
+            print("" + colorama.Fore.YELLOW + f"Are you sure minecraft is actually installed in the destination folder: {path}?\n")
+            return False
+        except FileNotFoundError:
+            print(colorama.Fore.RED + "[!] Java not found. Please install Java to run Fabric installer")
+        except Exception as e:
+            print(colorama.Fore.RED + f"[!] Error running Fabric installer: {e}")
+    else:
+        print(colorama.Fore.YELLOW + "[+] Fabric installation disabled in config")
 
 def detect_minecraft_path():
     """
@@ -236,11 +290,19 @@ def parse_cli_args():
     """
     pass  # TODO: Implement CLI parsing
 
+# def resource_path(relative_path):
+#     """ Get absolute path to resource, works for dev and for PyInstaller .exe """
+#     try:
+#         base_path = sys._MEIPASS  # PyInstaller sets this attr
+#     except AttributeError:
+#         base_path = os.path.abspath(".")
+#     return os.path.join(base_path, relative_path)
+
 def main():
     os.system('cls' if os.name == 'nt' else 'clear')  # Clear console for better readability
     colorama.init(autoreset=True)
-    print(colorama.Fore.GREEN + "Minecraft Sync Tool")
-    print(colorama.Fore.GREEN + "===================")
+    print(colorama.Fore.GREEN + f"Minecraft {MINECRAFT_VERSION} Sync Tool")
+    print(colorama.Fore.GREEN + "==========================")
     sleep(0.1)
 
     try:
@@ -254,6 +316,7 @@ def main():
         # Detect Minecraft path
         minecraft_path = detect_minecraft_path()
 
+
         # Use current working directory if source_base is not set
         source_base = Path(config["source_base"]) if config["source_base"] else Path.cwd()
         paths = {
@@ -266,6 +329,12 @@ def main():
         print(colorama.Fore.YELLOW + f"Using Minecraft path: {minecraft_path}")
         sleep(0.2)
         print()
+
+        # install fabric if enabled in config
+        fabric_result = install_fabric(minecraft_path)
+        if fabric_result is False:
+            print(colorama.Fore.RED + "[!] Fabric installation failed. Please cross check config.ini and ensure Minecraft is installed correctly.")
+            return
 
         # Validate paths and disk space
         validate_paths(paths)

@@ -7,25 +7,34 @@
 ![Stars](https://img.shields.io/github/stars/NONAN23x/minecraft-sync?style=for-the-badge)
 ![Issues](https://img.shields.io/github/issues/NONAN23x/minecraft-sync?style=for-the-badge)
 
+
+### Supported Platforms 🖥️
+
+![Windows](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)
+![macOS](https://img.shields.io/badge/macOS-000000?style=for-the-badge&logo=apple&logoColor=white)
+![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
+
+## Purpose 🎯
+
+Minecraft Sync was born out of frustration with the endless hassle of getting friends' Minecraft setups to match mine! 😤 If you've ever spent hours walking non-tech-savvy friends through mod installations, config tweaks, and version matching just to play together, you know the pain. This tool was originally created for my personal use and my friend group - because life's too short to troubleshoot mod conflicts when you just want to build and explore together! 🎮👥
+
+<br>
+
 <br>
 
 ## Prerequisites ⚙️
 
 </div>
 
-Before installing Minecraft Sync, make sure you have these essentials:
+Before installing Minecraft-Sync, make sure you have these essentials:
 
 1. **Java 21 or higher** - Download from [Oracle](https://www.oracle.com/java/technologies/downloads/) or [OpenJDK](https://openjdk.org/)
 > 💡 **Tip:** Check your Java version by running `java -version` in terminal/command prompt
 2. **Minecraft Launcher** - Official launcher from [minecraft.net](https://www.minecraft.net/download) or third-party launchers like [MultiMC](https://multimc.org/) or [Prism Launcher](https://prismlauncher.org/)
-3. **Fabric Loader** - Click here to install [Fabric Loader](https://maven.fabricmc.net/net/fabricmc/fabric-installer/1.0.3/fabric-installer-1.0.3.exe) to enable mod support
-    - Run the executable and ensure the Minecraft Version is set to 1.21.5, then click the install button
-    ![alt text](assets/image.png)
-
 
 <br>
 
-<div>
+<div align=center>
 
 ## Installation 📦
 
@@ -59,28 +68,39 @@ Before installing Minecraft Sync, make sure you have these essentials:
     uv run main.py
     ```
 
-That's it! You're ready to play Minecraft 2.0! 🎉
+That's it! You're now ready to enjoy Minecraft like never before! 🎉
 
-> ⚠️ Notice: When entering the game from launcher menu, make sure to select the new fabric profile created by the tool you ran in prerequisites
-
-<br>
-
-<div align=center>
-
-## Purpose 🎯
-
-Minecraft Sync was born out of frustration with the endless hassle of getting friends' Minecraft setups to match mine! 😤 If you've ever spent hours walking non-tech-savvy friends through mod installations, config tweaks, and version matching just to play together, you know the pain. This tool was originally created for my personal use and my friend group - because life's too short to troubleshoot mod conflicts when you just want to build and explore together! 🎮👥
+> ⚠️ Notice: This program uses fabric client to create a custom profile, make sure to change your minecraft launcher profile to `fabric-loader0.x.x-1.21.5` before launching the game!
 
 <br>
 
-## Supported Platforms 🖥️
+## Understanding the configuration [config.ini] ⚙️
+You might want to modify the [extras] section based on whether you already have java/fabric setup or not
 
-![Windows](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)
-![macOS](https://img.shields.io/badge/macOS-000000?style=for-the-badge&logo=apple&logoColor=white)
-![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
+> Change the values to true/false based on requirements
+```ini
+[paths]
+# Do not change this
+source_base = 
 
+# If you use legacy launcher or use a custom minecraft installation folder, outside of %appdata%, then you need to modify this file path
+# Example: D:\Games\minecraft
+minecraft_path =
 
-<br>
+[folders]
+# Keep them all true by default
+sync_mods = true
+sync_resourcepacks = true
+sync_shaderpacks = true
+
+[extras]
+# set this to true if you want to install java
+install_java = false
+
+# Automatically install Fabric mod loader
+# true by default, set to false to skip installation, but you will need to install it manually
+install_fabric = true
+```
 
 ## Why Use Minecraft Sync? 💡
 
