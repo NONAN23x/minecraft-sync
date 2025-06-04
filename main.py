@@ -382,10 +382,16 @@ def main():
             print(colorama.Fore.RED + "Some folders failed to sync. Check the output above for details.")
             sleep(0.3)
             
+        
+        print("\nPress Enter to exit...")
+        input()
     except Exception as e:
         print(f"Error during sync: {e}")
         print("Attempting rollback...")
         rollback()
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print(colorama.Fore.RED + "\nProcess interrupted by user. Exiting...")
