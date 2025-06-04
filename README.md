@@ -3,19 +3,36 @@
 # Minecraft Sync 🚀
 
 ![Minecraft Version](https://img.shields.io/badge/Minecraft-1.21.5-green?style=for-the-badge&logo=minecraft)
-![License](https://img.shields.io/github/license/nonan23x/minecraft-sync?style=for-the-badge)
-![Stars](https://img.shields.io/github/stars/nonan23x/minecraft-sync?style=for-the-badge)
-![Issues](https://img.shields.io/github/issues/nonan23x/minecraft-sync?style=for-the-badge)
+![License](https://img.shields.io/github/license/NONAN23x/minecraft-sync?style=for-the-badge)
+![Stars](https://img.shields.io/github/stars/NONAN23x/minecraft-sync?style=for-the-badge)
+![Issues](https://img.shields.io/github/issues/NONAN23x/minecraft-sync?style=for-the-badge)
 
 <br>
 
+## Prerequisites ⚙️
+
+</div>
+
+Before installing Minecraft Sync, make sure you have these essentials:
+
+1. **Java 21 or higher** - Download from [Oracle](https://www.oracle.com/java/technologies/downloads/) or [OpenJDK](https://openjdk.org/)
+> 💡 **Tip:** Check your Java version by running `java -version` in terminal/command prompt
+2. **Minecraft Launcher** - Official launcher from [minecraft.net](https://www.minecraft.net/download) or third-party launchers like [MultiMC](https://multimc.org/) or [Prism Launcher](https://prismlauncher.org/)
+3. **Fabric Loader** - Click here to install [Fabric Loader](https://maven.fabricmc.net/net/fabricmc/fabric-installer/1.0.3/fabric-installer-1.0.3.exe) to enable mod support
+    - Run the executable and ensure the Minecraft Version is set to 1.21.5, then click the install button
+    ![alt text](assets/image.png)
+
+
+<br>
+
+<div>
 
 ## Installation 📦
 
 </div>
 
 1. **Install Git** - Download from [git-scm.com](https://git-scm.com/)
-2. **Install UV** - Follow instructions at [docs.astral.sh/uv](https://docs.astral.sh/uv/) or use these quick commands:
+2. **Install UV package manager** - Use these quick commands:
     
     - **Windows (PowerShell/Terminal/CommandPrompt):**
         ```powershell
@@ -42,7 +59,9 @@
     uv run main.py
     ```
 
-That's it! You're ready to start syncing! 🎉
+That's it! You're ready to play Minecraft 2.0! 🎉
+
+> ⚠️ Notice: When entering the game from launcher menu, make sure to select the new fabric profile created by the tool you ran in prerequisites
 
 <br>
 

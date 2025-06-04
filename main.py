@@ -4,11 +4,23 @@ import os
 from datetime import datetime
 import shutil
 import configparser
+from time import sleep
+import colorama
+
 
 def detect_minecraft_path():
     """
     Auto-detect Minecraft installation path based on OS.
     Allow override via config.
+    
+    Returns: the path to the Minecraft directory.
+    Raises:
+        OSError if unsupported OS.
+        FileNotFoundError if Minecraft directory does not exist.
+        NotADirectoryError if Minecraft path is not a directory.
+        PermissionError if Minecraft directory is not readable.
+        ValueError if Minecraft path is not specified in config.
+        Exception for any other errors.
     """
     
     # Load config to check for custom minecraft path
@@ -39,7 +51,7 @@ def detect_minecraft_path():
 def load_config(config_path="config.ini"):
     """
     Load configuration from file.
-    Returns a dictionary with config values.
+    Returns: a dictionary with config values.
     """
 
     config = configparser.ConfigParser()
@@ -90,7 +102,7 @@ def backup_folder(target_folder: Path, retention_policy: int = 3):
         reverse=True
     )
     
-    print(f"Backup created: {backup_path}")
+    print(colorama.Fore.BLUE + f"[+] Backup created: {backup_path}")
 
     # Remove excess backups
     for backup in existing_backups[retention_policy:]:
@@ -122,7 +134,7 @@ def sync_folder(src: Path, dst: Path):
                 # Copy file, overwriting if exists
                 shutil.copy2(item, dest_file)
                 
-        print(f"Successfully synced {src} to {dst}")
+        print(colorama.Fore.BLUE + f"[✓] Successfully synced {src} to {dst}")
         return True
         
     except Exception as e:
@@ -139,9 +151,10 @@ def validate_paths(paths: dict):
     minecraft_path = Path(paths["minecraft_path"])
     if not minecraft_path.exists():
         raise FileNotFoundError(f"Minecraft directory does not exist: {minecraft_path}")
-    
     if not minecraft_path.is_dir():
         raise NotADirectoryError(f"Minecraft path is not a directory: {minecraft_path}")
+    if not os.access(minecraft_path, os.R_OK):
+        raise PermissionError(f"No read permission for Minecraft directory: {minecraft_path}")
     
     if not paths.get("source_base"):
         raise ValueError("Source base path not specified")
@@ -224,9 +237,12 @@ def parse_cli_args():
     pass  # TODO: Implement CLI parsing
 
 def main():
-    print("Minecraft Sync Tool")
-    print("===================")
-    
+    os.system('cls' if os.name == 'nt' else 'clear')  # Clear console for better readability
+    colorama.init(autoreset=True)
+    print(colorama.Fore.GREEN + "Minecraft Sync Tool")
+    print(colorama.Fore.GREEN + "===================")
+    sleep(0.1)
+
     try:
         
         # Load config
@@ -239,17 +255,22 @@ def main():
         minecraft_path = detect_minecraft_path()
 
         # Use current working directory if source_base is not set
-        source_base = config["source_base"] or Path(config["source_base"])
+        source_base = Path(config["source_base"]) if config["source_base"] else Path.cwd()
         paths = {
             "minecraft_path": minecraft_path,
             "source_base": source_base
         }
         
-        print(f"Using source base: {source_base}")
-        print(f"Using Minecraft path: {minecraft_path}")
+
+        print(colorama.Fore.YELLOW + f"Using Source Folder: {source_base}")
+        print(colorama.Fore.YELLOW + f"Using Minecraft path: {minecraft_path}")
+        sleep(0.2)
+        print()
 
         # Validate paths and disk space
-        validate_paths(paths)  # TODO: Uncomment when ready
+        validate_paths(paths)
+        sleep(0.2)
+        print()
         
         # Backup original folders and sync
         folder_types = ["mods", "resourcepacks", "shaderpacks"]
@@ -271,26 +292,31 @@ def main():
             # Sync folders
             success = sync_folder(src_folder, dst_folder)
             sync_results.append((folder_type, success))
-        
+            print()
+            sleep(0.4)
+
         # Validate integrity
         # TODO: Implement integrity validation
         
         # Print sync report
-        print("\n=== Sync Report ===")
+        print(colorama.Fore.GREEN + "\n=== Sync Report ===")
         for folder_type, success in sync_results:
             status = "✓ SUCCESS" if success else "✗ FAILED"
-            print(f"{folder_type}: {status}")
+            color = colorama.Fore.GREEN if success else colorama.Fore.RED
+            print(color + f"{folder_type}: {status}")
+            sleep(0.2)
         
         if all(result[1] for result in sync_results):
-            print("All folders synced successfully!")
+            print(colorama.Fore.GREEN + "Packs have been installed successfully!")
+            sleep(0.2)
         else:
-            print("Some folders failed to sync. Check the output above for details.")
+            print(colorama.Fore.RED + "Some folders failed to sync. Check the output above for details.")
+            sleep(0.3)
             
     except Exception as e:
         print(f"Error during sync: {e}")
         print("Attempting rollback...")
         rollback()
-    pass  # TODO: Implement main workflow
 
 if __name__ == "__main__":
     main()
