@@ -1,15 +1,15 @@
 from pathlib import Path
 import platform
 import os
+import sys
 from datetime import datetime
 import shutil
 import configparser
 from time import sleep
 import colorama
 import subprocess
-# import sys
 
-MINECRAFT_VERSION = "1.21.5"
+MINECRAFT_VERSION = "26.1.2"
 
 def install_fabric(path):
     """
@@ -35,10 +35,10 @@ def install_fabric(path):
                 fabric_jar = fabric_jars[0]  # Use first found
             else:
                 print(colorama.Fore.RED + "[!] No Fabric installer jar found in assets folder")
-                return
+                return False
         else:
             print(colorama.Fore.RED + "[!] Assets folder not found")
-            return
+            return False
         
         try:
             # Execute fabric installer jar
@@ -51,16 +51,20 @@ def install_fabric(path):
                 print(colorama.Fore.YELLOW + f"[+] Errors: {result.stderr}")
             
             print(colorama.Fore.GREEN + "[✓] Fabric installer executed successfully")
+            return True
         except subprocess.CalledProcessError as e:
             print(colorama.Fore.RED + f"[!] Fabric installer failed: {e}")
             print("" + colorama.Fore.YELLOW + f"Are you sure minecraft is actually installed in the destination folder: {path}?\n")
             return False
         except FileNotFoundError:
             print(colorama.Fore.RED + "[!] Java not found. Please install Java to run Fabric installer")
+            return False
         except Exception as e:
             print(colorama.Fore.RED + f"[!] Error running Fabric installer: {e}")
+            return False
     else:
         print(colorama.Fore.YELLOW + "[+] Fabric installation disabled in config")
+        return True
 
 def detect_minecraft_path():
     """
@@ -138,7 +142,7 @@ def backup_folder(target_folder: Path, retention_policy: int = 3):
     Maintain backup retention policy.
     """
     if not target_folder.exists():
-        return
+        return None
     
     # Create backup with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -161,6 +165,8 @@ def backup_folder(target_folder: Path, retention_policy: int = 3):
     # Remove excess backups
     for backup in existing_backups[retention_policy:]:
         shutil.rmtree(backup, ignore_errors=True)
+
+    return backup_path
 
 def sync_folder(src: Path, dst: Path):
     """
@@ -209,6 +215,8 @@ def validate_paths(paths: dict):
         raise NotADirectoryError(f"Minecraft path is not a directory: {minecraft_path}")
     if not os.access(minecraft_path, os.R_OK):
         raise PermissionError(f"No read permission for Minecraft directory: {minecraft_path}")
+    if not os.access(minecraft_path, os.W_OK):
+        raise PermissionError(f"No write permission for Minecraft directory: {minecraft_path}")
     
     if not paths.get("source_base"):
         raise ValueError("Source base path not specified")
@@ -230,6 +238,19 @@ def validate_paths(paths: dict):
     
     return True
 
+def validate_sync_sources(source_base: Path, enabled_folders: list[str]):
+    """
+    Verify enabled source folders exist before backing up the destination.
+    """
+    for folder_name in enabled_folders:
+        source_folder = source_base / folder_name
+        if not source_folder.exists():
+            raise FileNotFoundError(f"Source folder does not exist: {source_folder}")
+        if not source_folder.is_dir():
+            raise NotADirectoryError(f"Source path is not a directory: {source_folder}")
+        if not os.access(source_folder, os.R_OK):
+            raise PermissionError(f"No read permission for source folder: {source_folder}")
+
 def check_disk_space(path: Path):
     """
     Check available disk space before syncing.
@@ -242,40 +263,24 @@ def validate_file_integrity(src: Path, dst: Path):
     """
     pass  # TODO: Implement integrity check
 
-def rollback():
+def rollback(folder_states: list[dict]):
     """
     Rollback changes in case of failure.
     """
     try:
-        minecraft_path = detect_minecraft_path()
-        
-        # Find the most recent backup for each folder type
-        folder_types = ["mods", "resourcepacks", "shaderpacks"]
-        
-        for folder_type in folder_types:
-            current_folder = minecraft_path / folder_type
-            backup_pattern = f"{folder_type}.bak.*"
-            
-            # Find all backups for this folder type
-            existing_backups = sorted(
-                minecraft_path.glob(backup_pattern),
-                key=lambda p: p.stat().st_mtime,
-                reverse=True
-            )
-            
-            if existing_backups:
-                # Get the most recent backup
-                latest_backup = existing_backups[0]
-                
-                # Remove current folder if it exists
-                if current_folder.exists():
-                    shutil.rmtree(current_folder, ignore_errors=True)
-                
-                # Restore from backup
-                latest_backup.rename(current_folder)
-                print(f"Restored {folder_type} from backup: {latest_backup.name}")
+        for folder_state in reversed(folder_states):
+            folder_type = folder_state["folder_type"]
+            current_folder = folder_state["dst_folder"]
+            backup_path = folder_state["backup_path"]
+
+            if current_folder.exists():
+                shutil.rmtree(current_folder, ignore_errors=True)
+
+            if backup_path and backup_path.exists():
+                backup_path.rename(current_folder)
+                print(f"Restored {folder_type} from backup: {backup_path.name}")
             else:
-                print(f"No backup found for {folder_type}")
+                print(f"Removed partial sync for {folder_type}")
         
         print("Rollback completed successfully")
         return True
@@ -305,6 +310,9 @@ def main():
     print(colorama.Fore.GREEN + "==========================")
     sleep(0.1)
 
+    minecraft_path = None
+    folder_states = []
+
     try:
         
         # Load config
@@ -330,16 +338,26 @@ def main():
         sleep(0.2)
         print()
 
-        # install fabric if enabled in config
-        fabric_result = install_fabric(minecraft_path)
-        if fabric_result is False:
-            print(colorama.Fore.RED + "[!] Fabric installation failed. Please cross check config.ini and ensure Minecraft is installed correctly.")
-            return
-
         # Validate paths and disk space
         validate_paths(paths)
+        enabled_folders = [
+            folder_name
+            for folder_name, config_key in zip(
+                ["mods", "resourcepacks", "shaderpacks"],
+                ["sync_mods", "sync_resourcepacks", "sync_shaderpacks"]
+            )
+            if config[config_key]
+        ]
+        validate_sync_sources(source_base, enabled_folders)
         sleep(0.2)
         print()
+
+        # install fabric if enabled in config
+        fabric_result = install_fabric(minecraft_path)
+        if not fabric_result:
+            raise RuntimeError(
+                "Fabric installation failed. Please cross check config.ini and ensure Minecraft is installed correctly."
+            )
         
         # Backup original folders and sync
         folder_types = ["mods", "resourcepacks", "shaderpacks"]
@@ -354,13 +372,22 @@ def main():
                 
             src_folder = source_base / folder_type
             dst_folder = minecraft_path / folder_type
-            
+
+            folder_state = {
+                "folder_type": folder_type,
+                "dst_folder": dst_folder,
+                "backup_path": None,
+            }
+
             # Backup original folder
-            backup_folder(dst_folder)
-            
+            folder_state["backup_path"] = backup_folder(dst_folder)
+            folder_states.append(folder_state)
+
             # Sync folders
             success = sync_folder(src_folder, dst_folder)
             sync_results.append((folder_type, success))
+            if not success:
+                raise RuntimeError(f"Failed to sync {folder_type}")
             print()
             sleep(0.4)
 
@@ -381,14 +408,18 @@ def main():
         else:
             print(colorama.Fore.RED + "Some folders failed to sync. Check the output above for details.")
             sleep(0.3)
-            
-        
-        print("\nPress Enter to exit...")
-        input()
     except Exception as e:
         print(f"Error during sync: {e}")
-        print("Attempting rollback...")
-        rollback()
+        if minecraft_path and folder_states:
+            print("Attempting rollback...")
+            rollback(folder_states)
+        return False
+
+    if sys.stdin.isatty():
+        print("\nPress Enter to exit...")
+        input()
+
+    return True
 
 if __name__ == "__main__":
     try:

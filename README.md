@@ -2,7 +2,7 @@
 
 # Minecraft Sync 🚀
 
-![Minecraft Version](https://img.shields.io/badge/Minecraft-1.21.5-green?style=for-the-badge&logo=minecraft)
+![Minecraft Version](https://img.shields.io/badge/Minecraft-26.1.2-green?style=for-the-badge&logo=minecraft)
 ![License](https://img.shields.io/github/license/NONAN23x/minecraft-sync?style=for-the-badge)
 ![Stars](https://img.shields.io/github/stars/NONAN23x/minecraft-sync?style=for-the-badge)
 ![Issues](https://img.shields.io/github/issues/NONAN23x/minecraft-sync?style=for-the-badge)
@@ -70,21 +70,21 @@ Before installing Minecraft-Sync, make sure you have these essentials:
 
 That's it! You're now ready to enjoy Minecraft like never before! 🎉
 
-> ⚠️ Notice: This program uses fabric client to create a custom profile, make sure to change your minecraft launcher profile to `fabric-loader0.x.x-1.21.5` before launching the game!
+> ⚠️ Notice: This program installs the Fabric client and creates a Fabric launcher profile for Minecraft `26.1.2`. Make sure you launch that Fabric profile, not the vanilla one.
 
 <br>
 
 ## Understanding the configuration [config.ini] ⚙️
-You might want to modify the [extras] section based on whether you already have java/fabric setup or not
+You might want to modify the configuration depending on whether you want to use the default Minecraft path, a custom installation folder, or skip syncing specific folders.
 
 > Change the values to true/false based on requirements
 ```ini
 [paths]
-# Do not change this
+# Leave empty to use the current repository folder as the source
 source_base = 
 
-# If you use legacy launcher or use a custom minecraft installation folder, outside of %appdata%, then you need to modify this file path
-# Example: D:\Games\minecraft
+# Leave empty to auto-detect the default Minecraft installation path
+# Example: D:\Games\minecraft or /home/yourname/.minecraft
 minecraft_path =
 
 [folders]
@@ -94,7 +94,7 @@ sync_resourcepacks = true
 sync_shaderpacks = true
 
 [extras]
-# set this to true if you want to install java
+# Reserved for future use; Java installation is not automated yet
 install_java = false
 
 # Automatically install Fabric mod loader
@@ -102,10 +102,12 @@ install_java = false
 install_fabric = true
 ```
 
+If `source_base` is left empty, the script uses the current working directory as the source for `mods/`, `resourcepacks/`, and `shaderpacks/`.
+
 ## Why Use Minecraft Sync? 💡
 
 - 🐌 **Fix Vanilla Performance Issues** - Tired of 30 FPS on a decent PC? Sodium + Lithium combo delivers 3x better performance
-- 🎨 **Enhanced Visuals Made Easy** - Pre-configured Iris shaders with BSL and Continuum for jaw-dropping graphics without the headache
+- 🎨 **Enhanced Visuals Made Easy** - Pre-configured Iris shaders with BSL, Complementary, Bliss, and Kappa without the usual setup headache
 - 📦 **Curated Mod Collection** - Hand-picked QOL mods that actually matter - no bloat, just improvements
 - 🖼️ **Faithful Resource Packs** - Consistent visual overhaul that respects Minecraft's original aesthetic
 - 🔧 **Skip the Config Hell** - All mods pre-tuned and compatible - no more crashes from conflicting settings

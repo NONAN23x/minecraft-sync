@@ -9,3 +9,6 @@ main.spec
 
 # Virtual environments
 .venv
+
+# Local Codex workspace metadata
+.codex
