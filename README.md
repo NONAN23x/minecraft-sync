@@ -20,89 +20,84 @@ Minecraft Sync was born out of frustration with the endless hassle of getting fr
 
 <br>
 
-<br>
+## Distribution Model 📦
+
+</div>
+
+Minecraft Sync no longer needs users to install Git or Python just to get the pack.
+
+- Users download a small Rust installer executable from GitHub Releases.
+- The installer fetches `manifest.json`, downloads versioned archives from the matching release, verifies SHA-256 hashes, installs Fabric, and syncs the pack into `.minecraft`.
+- The repository remains the source of truth for `mods/`, `resourcepacks/`, `shaderpacks/`, and the Fabric installer jar.
 
 ## Prerequisites ⚙️
 
-</div>
-
-Before installing Minecraft-Sync, make sure you have these essentials:
+Before running the installer, make sure the target machine already has:
 
 1. **Java 21 or higher** - Download from [Oracle](https://www.oracle.com/java/technologies/downloads/) or [OpenJDK](https://openjdk.org/)
-> 💡 **Tip:** Check your Java version by running `java -version` in terminal/command prompt
-2. **Minecraft Launcher** - Official launcher from [minecraft.net](https://www.minecraft.net/download) or third-party launchers like [MultiMC](https://multimc.org/) or [Prism Launcher](https://prismlauncher.org/)
+2. **Minecraft Launcher** - Official launcher from [minecraft.net](https://www.minecraft.net/download) or a compatible launcher such as [Prism Launcher](https://prismlauncher.org/)
 
-<br>
+> The installer creates or updates the Fabric client profile for Minecraft `26.1.2`. Launch the Fabric profile afterward, not vanilla.
 
-<div align=center>
+## End User Install
 
-## Installation 📦
+1. Open the latest [GitHub Release](https://github.com/NONAN23x/minecraft-sync/releases/latest).
+2. Download the Windows installer executable, for example `minecraft-sync.exe`.
+3. Run it.
 
-</div>
+Optional flags:
 
-1. **Install Git** - Download from [git-scm.com](https://git-scm.com/)
-2. **Install UV package manager** - Use these quick commands:
-    
-    - **Windows (PowerShell/Terminal/CommandPrompt):**
-        ```powershell
-        powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-        ```
-        
-    - **Linux/macOS:**
-        ```bash
-        curl -LsSf https://astral.sh/uv/install.sh | sh
-        ```
-> ⚠️ Notice: Restart your terminal so that git and uv reflect on your PATH
-
-3. **Clone the repository**
-    ```bash
-    git clone https://github.com/nonan23x/minecraft-sync.git
-    cd minecraft-sync
-    ```
-4. **Install dependencies**
-    ```bash
-    uv sync
-    ```
-5. **Run the application**
-    ```bash
-    uv run main.py
-    ```
-
-That's it! You're now ready to enjoy Minecraft like never before! 🎉
-
-> ⚠️ Notice: This program installs the Fabric client and creates a Fabric launcher profile for Minecraft `26.1.2`. Make sure you launch that Fabric profile, not the vanilla one.
-
-<br>
-
-## Understanding the configuration [config.ini] ⚙️
-You might want to modify the configuration depending on whether you want to use the default Minecraft path, a custom installation folder, or skip syncing specific folders.
-
-> Change the values to true/false based on requirements
-```ini
-[paths]
-# Leave empty to use the current repository folder as the source
-source_base = 
-
-# Leave empty to auto-detect the default Minecraft installation path
-# Example: D:\Games\minecraft or /home/yourname/.minecraft
-minecraft_path =
-
-[folders]
-# Keep them all true by default
-sync_mods = true
-sync_resourcepacks = true
-sync_shaderpacks = true
-
-[extras]
-# Reserved for future use; Java installation is not automated yet
-install_java = false
-
-# Automatically install Fabric mod loader
-# true by default, set to false to skip installation, but you will need to install it manually
-install_fabric = true
+```powershell
+minecraft-sync.exe --minecraft-dir "D:\Games\.minecraft"
+minecraft-sync.exe --skip-fabric
+minecraft-sync.exe --skip-shaderpacks
 ```
 
-If `source_base` is left empty, the script uses the current working directory as the source for `mods/`, `resourcepacks/`, and `shaderpacks/`.
+The installer defaults to:
+
+- `https://github.com/NONAN23x/minecraft-sync/releases/latest/download/manifest.json`
+- `%APPDATA%\.minecraft` on Windows
+- `~/.minecraft` on Linux
+- `~/Library/Application Support/minecraft` on macOS
+
+## Maintainer Release Flow
+
+The release pipeline is now automated.
+
+- Pushing a tag such as `v0.2.0` triggers GitHub Actions.
+- The workflow publishes `mods.zip`, `resourcepacks.zip`, `shaderpacks.zip`, `fabric-installer-*.jar`, `manifest.json`, and platform installer binaries to the matching GitHub Release.
+
+Create and push a release tag:
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+Manual local publishing is still available if needed:
+
+```bash
+gh auth login
+cargo build --release
+python3 scripts/release.py --tag v0.2.0 --installer target/release/minecraft-sync --upload
+```
+
+The workflow and the manual flow both publish:
+
+- `mods.zip`
+- `resourcepacks.zip`
+- `shaderpacks.zip`
+- `fabric-installer-*.jar`
+- `manifest.json`
+- installer binaries
+
+## Repository Layout
+
+- `src/main.rs` is the Rust installer.
+- `scripts/release.py` builds the release archives and uploads them with `gh`.
+- `.github/workflows/release.yml` publishes release assets automatically on version tags.
+- `main.py` is a deprecated legacy local-copy workflow retained only for reference.
+- `release-assets/` is generated locally and ignored by git.
 
 ## Why Use Minecraft Sync? 💡
 

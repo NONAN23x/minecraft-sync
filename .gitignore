@@ -1,14 +1,12 @@
-# Python-generated files
+/target/
+/release-assets/
 __pycache__/
 *.py[oc]
+.venv/
 build/
 dist/
 wheels/
 *.egg-info
 main.spec
-
-# Virtual environments
-.venv
-
-# Local Codex workspace metadata
 .codex
+.codex/

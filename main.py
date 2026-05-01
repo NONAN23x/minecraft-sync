@@ -1,3 +1,12 @@
+"""
+Deprecated legacy workflow.
+
+The supported installer and release flow now live in:
+- src/main.rs
+- scripts/release.py
+- .github/workflows/release.yml
+"""
+
 from pathlib import Path
 import platform
 import os
