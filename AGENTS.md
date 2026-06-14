@@ -9,6 +9,7 @@ This file persists project context for future coding agents working in this repo
 - Project: `minecraft-sync`
 - Current primary product: a minimal Rust installer for a curated Minecraft modpack
 - Current version in `Cargo.toml`: `0.2.0`
+- Latest pushed release tag: `v0.2.1`
 - Canonical distribution model: GitHub Releases
 
 Users are expected to download a prebuilt installer binary from GitHub Releases, run it locally, and let it fetch versioned release assets from the matching release.
@@ -66,7 +67,8 @@ Notes:
 
 - `scripts/release.py` supports repeating `--installer` multiple times.
 - Local `gh` publishing depends on valid local auth.
-- In this environment, `gh auth status` previously reported the token for `NONAN23x` as invalid, so autonomous local publishing was blocked even though workflow-based publishing is configured.
+- Later in this session, `gh auth status` showed `NONAN23x` authenticated with `repo` and `workflow` scopes.
+- GitHub Actions was triggered successfully by pushing tag `v0.2.1`.
 
 ## Deprecated Paths
 
@@ -77,13 +79,18 @@ Do not treat the Python sync workflow as the supported user path unless explicit
 
 ## Current Migration Status
 
-The Rust migration is considered complete in the repository architecture, with these caveats:
+The Rust migration is complete and has been committed and pushed.
 
 - Rust is the primary installer path.
 - GitHub Actions is the primary release publication path.
-- Some Rust-related files may still be uncommitted in the working tree depending on branch state.
+- Migration commit: `3d2c898` (`Migrate installer and release flow to Rust`)
+- Tag `v0.2.1` was pushed to trigger the new release workflow.
 
-When continuing work, verify `git status` before assuming the migration has already been committed.
+Remaining work is operational rather than architectural:
+
+- verify the final asset list on the `v0.2.1` GitHub Release
+- smoke-test one released installer on a clean Minecraft directory
+- optionally retire or supersede `v0.2.0` if the older release shape should no longer be used
 
 ## Repo Conventions For Future Agents
 
@@ -111,9 +118,17 @@ If changing packaging or manifest generation, also validate:
 python3 scripts/release.py --tag v0.2.0
 ```
 
+If publishing a new release:
+
+```bash
+git push origin master
+git tag v0.2.1
+git push origin v0.2.1
+```
+
 ## Git Notes
 
-- The worktree may be dirty.
+- At the time of this update, `git status --short` was clean.
 - Do not revert unrelated user changes.
 - Generated local paths that should remain ignored:
   - `target/`
@@ -128,4 +143,9 @@ Check both:
 1. Local `gh` authentication with `gh auth status`
 2. Whether tag-driven GitHub Actions publication is sufficient
 
-If local `gh` auth is invalid, do not claim autonomous publishing is available from the current machine. Repository automation may still be correctly configured.
+Current known state:
+
+- local `gh` auth worked for push and release inspection in this session
+- `v0.2.1` release exists on GitHub
+- archive assets were confirmed on the release
+- if platform installer uploads matter, explicitly verify the final release asset list rather than assuming the matrix completed
