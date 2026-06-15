@@ -45,6 +45,8 @@ Before running the installer, make sure the target machine already has:
 2. Download the Windows installer executable, for example `minecraft-sync.exe`.
 3. Run it.
 
+The Windows release binary is built to be self-contained, so end users should not need to install the Visual C++ runtime separately.
+
 The installer now performs a guided preflight before it changes your pack:
 
 - checks that your Minecraft folder looks valid
