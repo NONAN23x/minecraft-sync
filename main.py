@@ -424,14 +424,20 @@ def main():
             rollback(folder_states)
         return False
 
-    if sys.stdin.isatty():
+    return True
+
+def pause_before_exit():
+    """
+    Keep the window open for interactive Windows launches so users can read the output.
+    """
+    if platform.system() == "Windows" and sys.stdin.isatty():
         print("\nPress Enter to exit...")
         input()
-
-    return True
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
         print(colorama.Fore.RED + "\nProcess interrupted by user. Exiting...")
+    finally:
+        pause_before_exit()

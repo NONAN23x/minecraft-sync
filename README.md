@@ -45,6 +45,14 @@ Before running the installer, make sure the target machine already has:
 2. Download the Windows installer executable, for example `minecraft-sync.exe`.
 3. Run it.
 
+The installer now performs a guided preflight before it changes your pack:
+
+- checks that your Minecraft folder looks valid
+- enforces Java 21 or newer when Fabric installation is enabled
+- verifies the release manifest can be reached and parsed
+- checks that the target Minecraft folder is writable
+- offers guided recovery for missing default paths and retry prompts for manifest/network issues in interactive sessions
+
 Optional flags:
 
 ```powershell
@@ -59,6 +67,8 @@ The installer defaults to:
 - `%APPDATA%\.minecraft` on Windows
 - `~/.minecraft` on Linux
 - `~/Library/Application Support/minecraft` on macOS
+
+If Minecraft is not found in the default location, the installer now offers a simple recovery menu so the user can either exit or paste a custom path. It accepts common pasted formats such as quoted paths, `~`, `%APPDATA%`, `$HOME`, parent folders, or common subfolders like `mods`.
 
 ## Maintainer Release Flow
 
