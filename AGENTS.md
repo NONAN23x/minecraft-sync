@@ -24,7 +24,7 @@ Users are expected to download a prebuilt installer binary from GitHub Releases,
   Automated release publishing on version tags.
 - `mods/`, `resourcepacks/`, `shaderpacks/`
   Pack content that becomes release archives.
-- `assets/fabric-installer-*.jar`
+- `assets/fabric-installer-1.1.1.jar`
   Fabric installer jar included in release assets and referenced by the manifest.
 
 ## Runtime Model
@@ -52,7 +52,7 @@ Current intended release path is automated.
   - `mods.zip`
   - `resourcepacks.zip`
   - `shaderpacks.zip`
-  - `fabric-installer-*.jar`
+  - `fabric-installer-1.1.1.jar`
   - `manifest.json`
   - installer binaries for Windows, macOS, and Linux
 

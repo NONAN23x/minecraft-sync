@@ -28,7 +28,7 @@ Minecraft Sync no longer needs users to install Git or Python just to get the pa
 
 - Users download a small Rust installer executable from GitHub Releases.
 - The installer fetches `manifest.json`, downloads versioned archives from the matching release, verifies SHA-256 hashes, installs Fabric, and syncs the pack into `.minecraft`.
-- The repository remains the source of truth for `mods/`, `resourcepacks/`, `shaderpacks/`, and the Fabric installer jar.
+- The repository remains the source of truth for `mods/`, `resourcepacks/`, `shaderpacks/`, and `assets/fabric-installer-1.1.1.jar`.
 
 ## Prerequisites ⚙️
 
@@ -38,6 +38,12 @@ Before running the installer, make sure the target machine already has:
 2. **Minecraft Launcher** - Official launcher from [minecraft.net](https://www.minecraft.net/download) or a compatible launcher such as [Prism Launcher](https://prismlauncher.org/)
 
 > The installer creates or updates the Fabric client profile for Minecraft `26.1.2`. Launch the Fabric profile afterward, not vanilla.
+
+If Java is missing, the installer can now help interactively:
+
+- on Windows it can download and launch the Oracle JDK MSI installer
+- on macOS it can download and open the Oracle JDK DMG installer
+- on Linux it suggests the best OpenJDK install command it can detect for `apt`, `dnf`, or `pacman`
 
 ## End User Install
 
@@ -77,7 +83,7 @@ If Minecraft is not found in the default location, the installer now offers a si
 The release pipeline is now automated.
 
 - Pushing a tag such as `v0.2.0` triggers GitHub Actions.
-- The workflow publishes `mods.zip`, `resourcepacks.zip`, `shaderpacks.zip`, `fabric-installer-*.jar`, `manifest.json`, and platform installer binaries to the matching GitHub Release.
+- The workflow publishes `mods.zip`, `resourcepacks.zip`, `shaderpacks.zip`, `fabric-installer-1.1.1.jar`, `manifest.json`, and platform installer binaries to the matching GitHub Release.
 
 Create and push a release tag:
 
@@ -99,7 +105,7 @@ The workflow and the manual flow both publish:
 - `mods.zip`
 - `resourcepacks.zip`
 - `shaderpacks.zip`
-- `fabric-installer-*.jar`
+- `fabric-installer-1.1.1.jar`
 - `manifest.json`
 - installer binaries
 

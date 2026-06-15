@@ -19,6 +19,10 @@ const DEFAULT_MANIFEST_URL: &str =
     "https://github.com/NONAN23x/minecraft-sync/releases/latest/download/manifest.json";
 const APP_TITLE: &str = "Minecraft Sync Installer";
 const MIN_JAVA_VERSION: u32 = 21;
+const WINDOWS_JAVA_INSTALLER_URL: &str =
+    "https://download.oracle.com/java/26/latest/jdk-26_windows-x64_bin.msi";
+const MACOS_JAVA_INSTALLER_URL: &str =
+    "https://download.oracle.com/java/26/latest/jdk-26_macos-x64_bin.dmg";
 
 type AppResult<T> = Result<T, AppError>;
 
@@ -67,6 +71,7 @@ struct PreflightResult {
     manifest: Manifest,
     minecraft_dir: PathBuf,
     temp_dir: TempDir,
+    java_command: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -288,6 +293,29 @@ impl Ui {
         }
     }
 
+    fn prompt_yes_no(&self, message: &str) -> AppResult<bool> {
+        loop {
+            let choice = self.prompt_line(message)?;
+            match choice.trim().to_ascii_lowercase().as_str() {
+                "y" | "yes" => return Ok(true),
+                "n" | "no" => return Ok(false),
+                "" => self.warn("Please answer y or n."),
+                _ => self.warn("Please answer y or n."),
+            }
+        }
+    }
+
+    fn prompt_continue_or_exit(&self, message: &str) -> AppResult<bool> {
+        loop {
+            let choice = self.prompt_line(message)?;
+            match choice.trim().to_ascii_lowercase().as_str() {
+                "" | "continue" | "c" | "done" | "ready" => return Ok(true),
+                "exit" | "quit" | "q" | "skip" | "cancel" => return Ok(false),
+                _ => self.warn("Press Enter when ready, or type exit."),
+            }
+        }
+    }
+
     fn paint(&self, text: &str, tone: Tone) -> String {
         if !self.color {
             return text.to_string();
@@ -336,6 +364,19 @@ enum RetryChoice {
     Exit,
 }
 
+#[derive(Debug)]
+struct JavaRuntime {
+    command: PathBuf,
+    major: u32,
+    version_line: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JavaInstallChoice {
+    Install,
+    Decline,
+}
+
 fn main() {
     let ui = Ui::new();
     let exit_code = match run(&ui) {
@@ -370,6 +411,10 @@ fn run(ui: &Ui) -> AppResult<()> {
                 &client,
                 &preflight.temp_dir,
                 asset,
+                preflight
+                    .java_command
+                    .as_deref()
+                    .unwrap_or_else(|| Path::new("java")),
                 &preflight.minecraft_dir,
                 &preflight.manifest.minecraft_version,
             )?;
@@ -432,11 +477,12 @@ fn preflight_checks(ui: &Ui, client: &Client, args: &Args) -> AppResult<Prefligh
         minecraft_dir.display()
     ));
 
-    if !args.skip_fabric {
-        check_java_21_plus(ui)?;
+    let java_command = if !args.skip_fabric {
+        Some(check_java_21_plus(ui, client)?)
     } else {
         ui.info("Skipping Java preflight because --skip-fabric was supplied.");
-    }
+        None
+    };
 
     let manifest = run_with_retry(ui, "Retry manifest check", || {
         check_manifest_reachable(ui, client, &args.manifest_url)
@@ -453,6 +499,7 @@ fn preflight_checks(ui: &Ui, client: &Client, args: &Args) -> AppResult<Prefligh
         manifest,
         minecraft_dir,
         temp_dir,
+        java_command,
     })
 }
 
@@ -910,23 +957,94 @@ fn has_minecraft_markers(path: &Path) -> bool {
     markers.iter().any(|marker| path.join(marker).exists())
 }
 
-fn check_java_21_plus(ui: &Ui) -> AppResult<()> {
-    ui.step(format!("Checking Java {MIN_JAVA_VERSION}+"));
+fn check_java_21_plus(ui: &Ui, client: &Client) -> AppResult<PathBuf> {
+    loop {
+        ui.step(format!("Checking Java {MIN_JAVA_VERSION}+"));
 
-    let output = Command::new("java").arg("-version").output().map_err(|error| {
-        if error.kind() == io::ErrorKind::NotFound {
-            AppError::new(
-                ErrorKind::JavaMissing,
-                "Java was not found on this computer.",
-            )
-            .with_suggestion("Install Java 21 or newer, then run the installer again.")
-            .with_suggestion("If Java is already installed, make sure the `java` command is available in PATH.")
-        } else {
-            io_error(error, "run `java -version`", None).with_suggestion(
-                "Install Java 21 or newer, then run the installer again.",
-            )
+        match probe_java_runtime() {
+            Ok(runtime) => {
+                if runtime.major < MIN_JAVA_VERSION {
+                    return Err(AppError::new(
+                        ErrorKind::JavaVersionTooOld,
+                        format!(
+                            "Java {} is installed, but this modpack requires Java {MIN_JAVA_VERSION} or newer.",
+                            runtime.major
+                        ),
+                    )
+                    .with_suggestion("Install Java 21 or newer, then rerun the installer.")
+                    .with_detail(runtime.version_line));
+                }
+
+                ui.success(format!("Java {} is installed.", runtime.major));
+                return Ok(runtime.command);
+            }
+            Err(error) if error.kind == ErrorKind::JavaMissing && ui.can_prompt() => {
+                ui.recoverable_error(&error);
+                match prompt_for_java_install(ui)? {
+                    JavaInstallChoice::Install => {
+                        install_or_guide_java(ui, client)?;
+                        continue;
+                    }
+                    JavaInstallChoice::Decline => return Err(error),
+                }
+            }
+            Err(error) => return Err(error),
         }
-    })?;
+    }
+}
+
+fn parse_java_major(output: &str) -> Option<u32> {
+    let start = output.find('"')?;
+    let rest = &output[start + 1..];
+    let digits: String = rest.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+    digits.parse().ok()
+}
+
+fn probe_java_runtime() -> AppResult<JavaRuntime> {
+    let mut saw_missing = false;
+
+    for candidate in java_command_candidates() {
+        match run_java_version(&candidate) {
+            Ok(runtime) => return Ok(runtime),
+            Err(error) if error.kind == ErrorKind::JavaMissing => {
+                saw_missing = true;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+
+    if saw_missing {
+        Err(AppError::new(
+            ErrorKind::JavaMissing,
+            "Java was not found on this computer.",
+        )
+        .with_suggestion("Install Java 21 or newer, then run the installer again.")
+        .with_suggestion(
+            "If Java is already installed, make sure the `java` command is available in PATH.",
+        ))
+    } else {
+        Err(AppError::new(
+            ErrorKind::JavaMissing,
+            "Java was not found on this computer.",
+        ))
+    }
+}
+
+fn run_java_version(command: &Path) -> AppResult<JavaRuntime> {
+    let output = Command::new(command)
+        .arg("-version")
+        .output()
+        .map_err(|error| {
+            if error.kind() == io::ErrorKind::NotFound {
+                AppError::new(
+                    ErrorKind::JavaMissing,
+                    format!("Java was not found at {}.", command.display()),
+                )
+            } else {
+                io_error(error, "run `java -version`", Some(command))
+                    .with_suggestion("Install Java 21 or newer, then run the installer again.")
+            }
+        })?;
 
     let combined_output = combined_command_output(&output.stdout, &output.stderr);
     let major = parse_java_major(&combined_output).ok_or_else(|| {
@@ -938,26 +1056,267 @@ fn check_java_21_plus(ui: &Ui) -> AppResult<()> {
         .with_detail(first_line(&combined_output))
     })?;
 
-    if major < MIN_JAVA_VERSION {
-        return Err(AppError::new(
-            ErrorKind::JavaVersionTooOld,
-            format!(
-                "Java {major} is installed, but this modpack requires Java {MIN_JAVA_VERSION} or newer."
-            ),
-        )
-        .with_suggestion("Install Java 21 or newer, then rerun the installer.")
-        .with_detail(first_line(&combined_output)));
+    Ok(JavaRuntime {
+        command: command.to_path_buf(),
+        major,
+        version_line: first_line(&combined_output),
+    })
+}
+
+fn java_command_candidates() -> Vec<PathBuf> {
+    let mut candidates = vec![PathBuf::from("java")];
+
+    match env::consts::OS {
+        "windows" => {
+            if let Some(program_files) = env::var_os("ProgramFiles") {
+                add_java_candidates_from_dir(
+                    &mut candidates,
+                    &PathBuf::from(program_files).join("Java"),
+                    "bin/java.exe",
+                );
+            }
+        }
+        "macos" => {
+            add_java_candidates_from_dir(
+                &mut candidates,
+                Path::new("/Library/Java/JavaVirtualMachines"),
+                "Contents/Home/bin/java",
+            );
+        }
+        _ => {}
     }
 
-    ui.success(format!("Java {major} is installed."));
+    candidates
+}
+
+fn add_java_candidates_from_dir(candidates: &mut Vec<PathBuf>, base_dir: &Path, suffix: &str) {
+    let Ok(entries) = fs::read_dir(base_dir) else {
+        return;
+    };
+
+    let mut discovered = Vec::new();
+    for entry in entries.flatten() {
+        discovered.push(entry.path().join(suffix));
+    }
+    discovered.sort();
+    discovered.reverse();
+
+    for candidate in discovered {
+        if !candidates.contains(&candidate) {
+            candidates.push(candidate);
+        }
+    }
+}
+
+fn prompt_for_java_install(ui: &Ui) -> AppResult<JavaInstallChoice> {
+    if ui.prompt_yes_no("Would you like help installing Java now? [y/n]: ")? {
+        Ok(JavaInstallChoice::Install)
+    } else {
+        Ok(JavaInstallChoice::Decline)
+    }
+}
+
+fn install_or_guide_java(ui: &Ui, client: &Client) -> AppResult<()> {
+    match env::consts::OS {
+        "windows" => download_and_run_windows_java_installer(ui, client),
+        "macos" => download_and_open_macos_java_installer(ui, client),
+        "linux" => guide_linux_java_install(ui),
+        other => Err(AppError::new(
+            ErrorKind::UnsupportedOs,
+            format!("Automatic Java help is not supported on {other}."),
+        )
+        .with_suggestion("Install Java 21 or newer manually, then rerun the installer.")),
+    }
+}
+
+fn download_and_run_windows_java_installer(ui: &Ui, client: &Client) -> AppResult<()> {
+    ui.step("Downloading the Windows Java installer");
+    let download_path = preferred_download_path("jdk-26_windows-x64_bin.msi")?;
+    download_support_file(
+        client,
+        WINDOWS_JAVA_INSTALLER_URL,
+        &download_path,
+        "the Windows Java installer",
+    )?;
+    ui.success(format!(
+        "Downloaded the Windows Java installer to {}.",
+        download_path.display()
+    ));
+
+    ui.step("Launching the Windows Java installer");
+    let status = Command::new("msiexec")
+        .arg("/i")
+        .arg(&download_path)
+        .status()
+        .map_err(|error| {
+            io_error(
+                error,
+                "start the Windows Java installer",
+                Some(&download_path),
+            )
+        })?;
+
+    if !status.success() {
+        return Err(AppError::new(
+            ErrorKind::JavaMissing,
+            "The Windows Java installer did not finish successfully.",
+        )
+        .with_suggestion("Complete the MSI installer, then run Minecraft Sync again.")
+        .with_detail(format!("Installer exit status: {status}")));
+    }
+
+    ui.success("The Java MSI installer finished.");
     Ok(())
 }
 
-fn parse_java_major(output: &str) -> Option<u32> {
-    let start = output.find('"')?;
-    let rest = &output[start + 1..];
-    let digits: String = rest.chars().take_while(|ch| ch.is_ascii_digit()).collect();
-    digits.parse().ok()
+fn download_and_open_macos_java_installer(ui: &Ui, client: &Client) -> AppResult<()> {
+    ui.step("Downloading the macOS Java installer");
+    let download_path = preferred_download_path("jdk-26_macos-x64_bin.dmg")?;
+    download_support_file(
+        client,
+        MACOS_JAVA_INSTALLER_URL,
+        &download_path,
+        "the macOS Java installer",
+    )?;
+    ui.success(format!(
+        "Downloaded the macOS Java installer to {}.",
+        download_path.display()
+    ));
+
+    ui.step("Opening the macOS Java installer");
+    let status = Command::new("open")
+        .arg(&download_path)
+        .status()
+        .map_err(|error| io_error(error, "open the macOS Java installer", Some(&download_path)))?;
+
+    if !status.success() {
+        return Err(AppError::new(
+            ErrorKind::JavaMissing,
+            "The macOS Java installer could not be opened automatically.",
+        )
+        .with_suggestion(format!(
+            "Open {} manually and complete the installer.",
+            download_path.display()
+        ))
+        .with_detail(format!("Installer exit status: {status}")));
+    }
+
+    ui.hint("Finish the Java installer in macOS, then come back here.");
+    if !ui.prompt_continue_or_exit("Press Enter after Java is installed, or type exit: ")? {
+        return Err(AppError::new(
+            ErrorKind::UserCancelled,
+            "Installation cancelled while waiting for Java setup.",
+        ));
+    }
+
+    Ok(())
+}
+
+fn guide_linux_java_install(ui: &Ui) -> AppResult<()> {
+    ui.step("Preparing Linux Java installation guidance");
+    let command = detect_linux_java_install_command().ok_or_else(|| {
+        AppError::new(
+            ErrorKind::JavaMissing,
+            "Java was not found, and the installer could not recognize your Linux package manager.",
+        )
+        .with_suggestion("Install OpenJDK 21 or newer manually, then rerun the installer.")
+    })?;
+
+    ui.hint("Run this command in another terminal to install Java:");
+    println!("{command}");
+    if !ui.prompt_continue_or_exit("Press Enter after Java is installed, or type exit: ")? {
+        return Err(AppError::new(
+            ErrorKind::UserCancelled,
+            "Installation cancelled while waiting for Java setup.",
+        ));
+    }
+
+    Ok(())
+}
+
+fn detect_linux_java_install_command() -> Option<&'static str> {
+    if command_exists("apt-get") {
+        Some("sudo apt-get update && sudo apt-get install -y openjdk-21-jdk")
+    } else if command_exists("dnf") {
+        Some("sudo dnf install -y java-21-openjdk")
+    } else if command_exists("pacman") {
+        Some("sudo pacman -S --needed jdk-openjdk")
+    } else {
+        None
+    }
+}
+
+fn command_exists(command: &str) -> bool {
+    env::var_os("PATH")
+        .map(|paths| {
+            env::split_paths(&paths).any(|path| {
+                let full_path = path.join(command);
+                full_path.is_file()
+            })
+        })
+        .unwrap_or(false)
+}
+
+fn preferred_download_path(file_name: &str) -> AppResult<PathBuf> {
+    let downloads_dir = downloads_dir()?;
+    fs::create_dir_all(&downloads_dir)
+        .map_err(|error| io_error(error, "create the Downloads folder", Some(&downloads_dir)))?;
+    Ok(downloads_dir.join(file_name))
+}
+
+fn downloads_dir() -> AppResult<PathBuf> {
+    match env::consts::OS {
+        "windows" => {
+            let profile = env::var_os("USERPROFILE").ok_or_else(|| {
+                AppError::new(
+                    ErrorKind::Other,
+                    "The installer could not locate your Windows profile folder.",
+                )
+            })?;
+            Ok(PathBuf::from(profile).join("Downloads"))
+        }
+        "macos" | "linux" => Ok(home_dir()?.join("Downloads")),
+        other => Err(AppError::new(
+            ErrorKind::UnsupportedOs,
+            format!("Download folder detection is not supported on {other}."),
+        )),
+    }
+}
+
+fn download_support_file(
+    client: &Client,
+    url: &str,
+    destination: &Path,
+    label: &str,
+) -> AppResult<()> {
+    let response = client.get(url).send().map_err(|error| {
+        network_error(
+            &format!("The installer could not download {label}."),
+            url,
+            error,
+        )
+    })?;
+
+    if !response.status().is_success() {
+        return Err(http_status_error(
+            &format!("The installer could not download {label}."),
+            url,
+            response.status(),
+        ));
+    }
+
+    let bytes = response.bytes().map_err(|error| {
+        AppError::new(
+            ErrorKind::Network,
+            format!("The download for {label} started, but it did not finish cleanly."),
+        )
+        .with_suggestion("Check your internet connection and try again.")
+        .with_detail(error.to_string())
+    })?;
+
+    fs::write(destination, &bytes)
+        .map_err(|error| io_error(error, "write a downloaded installer", Some(destination)))?;
+    Ok(())
 }
 
 fn check_manifest_reachable(ui: &Ui, client: &Client, manifest_url: &str) -> AppResult<Manifest> {
@@ -1086,13 +1445,14 @@ fn install_fabric(
     client: &Client,
     temp_dir: &TempDir,
     asset: &ReleaseAsset,
+    java_command: &Path,
     minecraft_dir: &Path,
     minecraft_version: &str,
 ) -> AppResult<()> {
     ui.step("Installing Fabric");
     let jar_path = download_asset(ui, client, temp_dir, "fabric-installer.jar", asset)?;
 
-    let output = Command::new("java")
+    let output = Command::new(java_command)
         .arg("-jar")
         .arg(&jar_path)
         .arg("client")
@@ -1109,7 +1469,7 @@ fn install_fabric(
                 )
                 .with_suggestion("Install Java 21 or newer, then run the installer again.")
             } else {
-                io_error(error, "start the Fabric installer", Some(&jar_path))
+                io_error(error, "start the Fabric installer", Some(java_command))
             }
         })?;
 
