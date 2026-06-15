@@ -34,14 +34,14 @@ Minecraft Sync no longer needs users to install Git or Python just to get the pa
 
 Before running the installer, make sure the target machine already has:
 
-1. **Java 21 or higher** - Download from [Oracle](https://www.oracle.com/java/technologies/downloads/) or [OpenJDK](https://openjdk.org/)
+1. **Java 25 or higher** - The installer can help install OpenJDK 26 if Java is missing or older than 25.
 2. **Minecraft Launcher** - Official launcher from [minecraft.net](https://www.minecraft.net/download) or a compatible launcher such as [Prism Launcher](https://prismlauncher.org/)
 
 > The installer creates or updates the Fabric client profile for Minecraft `26.1.2`. Launch the Fabric profile afterward, not vanilla.
 
 If Java is missing, the installer can now help interactively:
 
-- on Windows it can download and launch the Oracle JDK MSI installer
+- on Windows it can download Eclipse Temurin OpenJDK 26, install it under your user profile, and configure user-level `JAVA_HOME`/`Path`
 - on macOS it can download and open the Oracle JDK DMG installer
 - on Linux it suggests the best OpenJDK install command it can detect for `apt`, `dnf`, or `pacman`
 
@@ -56,7 +56,7 @@ The Windows release binary is built to be self-contained, so end users should no
 The installer now performs a guided preflight before it changes your pack:
 
 - checks that your Minecraft folder looks valid
-- enforces Java 21 or newer when Fabric installation is enabled
+- checks for Java 25 or newer when Fabric installation is enabled
 - verifies the release manifest can be reached and parsed
 - checks that the target Minecraft folder is writable
 - offers guided recovery for missing default paths and retry prompts for manifest/network issues in interactive sessions

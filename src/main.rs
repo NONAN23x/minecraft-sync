@@ -18,9 +18,8 @@ use zip::ZipArchive;
 const DEFAULT_MANIFEST_URL: &str =
     "https://github.com/NONAN23x/minecraft-sync/releases/latest/download/manifest.json";
 const APP_TITLE: &str = "Minecraft Sync Installer";
-const MIN_JAVA_VERSION: u32 = 21;
-const WINDOWS_JAVA_INSTALLER_URL: &str =
-    "https://download.oracle.com/java/26/latest/jdk-26_windows-x64_bin.msi";
+const MIN_JAVA_VERSION: u32 = 25;
+const WINDOWS_JAVA_INSTALLER_URL: &str = "https://api.adoptium.net/v3/binary/latest/26/ga/windows/x64/jdk/hotspot/normal/eclipse?project=jdk";
 const MACOS_JAVA_INSTALLER_URL: &str =
     "https://download.oracle.com/java/26/latest/jdk-26_macos-x64_bin.dmg";
 
@@ -316,6 +315,24 @@ impl Ui {
         }
     }
 
+    fn prompt_install_or_skip_java(&self) -> AppResult<OldJavaChoice> {
+        loop {
+            println!();
+            println!("Choose an option:");
+            println!("  1) Install OpenJDK 26");
+            println!("  2) Skip Java installation and continue");
+
+            let choice = self.prompt_line("Selection: ")?;
+            match choice.trim().to_ascii_lowercase().as_str() {
+                "1" | "install" | "i" | "y" | "yes" => return Ok(OldJavaChoice::Install),
+                "2" | "skip" | "s" | "n" | "no" => return Ok(OldJavaChoice::Skip),
+                "" => self.warn("Please choose 1 or 2."),
+                _ => self
+                    .warn("Enter 1 to install OpenJDK 26 or 2 to continue with your current Java."),
+            }
+        }
+    }
+
     fn paint(&self, text: &str, tone: Tone) -> String {
         if !self.color {
             return text.to_string();
@@ -375,6 +392,12 @@ struct JavaRuntime {
 enum JavaInstallChoice {
     Install,
     Decline,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OldJavaChoice {
+    Install,
+    Skip,
 }
 
 fn main() {
@@ -478,7 +501,7 @@ fn preflight_checks(ui: &Ui, client: &Client, args: &Args) -> AppResult<Prefligh
     ));
 
     let java_command = if !args.skip_fabric {
-        Some(check_java_21_plus(ui, client)?)
+        Some(check_java_25_plus(ui, client)?)
     } else {
         ui.info("Skipping Java preflight because --skip-fabric was supplied.");
         None
@@ -957,22 +980,42 @@ fn has_minecraft_markers(path: &Path) -> bool {
     markers.iter().any(|marker| path.join(marker).exists())
 }
 
-fn check_java_21_plus(ui: &Ui, client: &Client) -> AppResult<PathBuf> {
+fn check_java_25_plus(ui: &Ui, client: &Client) -> AppResult<PathBuf> {
     loop {
         ui.step(format!("Checking Java {MIN_JAVA_VERSION}+"));
 
         match probe_java_runtime() {
             Ok(runtime) => {
                 if runtime.major < MIN_JAVA_VERSION {
-                    return Err(AppError::new(
+                    let error = AppError::new(
                         ErrorKind::JavaVersionTooOld,
                         format!(
-                            "Java {} is installed, but this modpack requires Java {MIN_JAVA_VERSION} or newer.",
+                            "Java {} is installed. Java {MIN_JAVA_VERSION}+ is recommended for this modpack.",
                             runtime.major
                         ),
                     )
-                    .with_suggestion("Install Java 21 or newer, then rerun the installer.")
-                    .with_detail(runtime.version_line));
+                    .with_suggestion("Install OpenJDK 26 for the smoothest setup.")
+                    .with_suggestion("You can skip this and continue with your current Java if you want to try it anyway.")
+                    .with_detail(runtime.version_line.clone());
+
+                    if !ui.can_prompt() {
+                        return Err(error);
+                    }
+
+                    ui.recoverable_error(&error);
+                    match ui.prompt_install_or_skip_java()? {
+                        OldJavaChoice::Install => {
+                            install_or_guide_java(ui, client)?;
+                            continue;
+                        }
+                        OldJavaChoice::Skip => {
+                            ui.warn(format!(
+                                "Continuing with Java {}. Fabric may fail if this Java is incompatible.",
+                                runtime.major
+                            ));
+                            return Ok(runtime.command);
+                        }
+                    }
                 }
 
                 ui.success(format!("Java {} is installed.", runtime.major));
@@ -1018,7 +1061,7 @@ fn probe_java_runtime() -> AppResult<JavaRuntime> {
             ErrorKind::JavaMissing,
             "Java was not found on this computer.",
         )
-        .with_suggestion("Install Java 21 or newer, then run the installer again.")
+        .with_suggestion("Install OpenJDK 26, then run the installer again.")
         .with_suggestion(
             "If Java is already installed, make sure the `java` command is available in PATH.",
         ))
@@ -1042,7 +1085,7 @@ fn run_java_version(command: &Path) -> AppResult<JavaRuntime> {
                 )
             } else {
                 io_error(error, "run `java -version`", Some(command))
-                    .with_suggestion("Install Java 21 or newer, then run the installer again.")
+                    .with_suggestion("Install OpenJDK 26, then run the installer again.")
             }
         })?;
 
@@ -1052,7 +1095,7 @@ fn run_java_version(command: &Path) -> AppResult<JavaRuntime> {
             ErrorKind::JavaVersionTooOld,
             "Java was found, but the installer could not understand its version.",
         )
-        .with_suggestion("Install Java 21 or newer from Oracle or OpenJDK, then try again.")
+        .with_suggestion("Install OpenJDK 26, then try again.")
         .with_detail(first_line(&combined_output))
     })?;
 
@@ -1068,6 +1111,13 @@ fn java_command_candidates() -> Vec<PathBuf> {
 
     match env::consts::OS {
         "windows" => {
+            if let Ok(install_parent) = windows_java_install_parent() {
+                let candidate = install_parent.join("jdk-26").join("bin").join("java.exe");
+                if !candidates.contains(&candidate) {
+                    candidates.push(candidate);
+                }
+            }
+
             if let Some(program_files) = env::var_os("ProgramFiles") {
                 add_java_candidates_from_dir(
                     &mut candidates,
@@ -1125,48 +1175,305 @@ fn install_or_guide_java(ui: &Ui, client: &Client) -> AppResult<()> {
             ErrorKind::UnsupportedOs,
             format!("Automatic Java help is not supported on {other}."),
         )
-        .with_suggestion("Install Java 21 or newer manually, then rerun the installer.")),
+        .with_suggestion("Install Java 25 or newer manually, then rerun the installer.")),
     }
 }
 
 fn download_and_run_windows_java_installer(ui: &Ui, client: &Client) -> AppResult<()> {
-    ui.step("Downloading the Windows Java installer");
-    let download_path = preferred_download_path("jdk-26_windows-x64_bin.msi")?;
+    ui.step("Downloading OpenJDK 26 for Windows");
+    let download_path = preferred_download_path("OpenJDK26U-jdk_x64_windows_hotspot.zip")?;
     download_support_file(
         client,
         WINDOWS_JAVA_INSTALLER_URL,
         &download_path,
-        "the Windows Java installer",
+        "OpenJDK 26 for Windows",
     )?;
     ui.success(format!(
-        "Downloaded the Windows Java installer to {}.",
+        "Downloaded OpenJDK 26 to {}.",
         download_path.display()
     ));
 
-    ui.step("Launching the Windows Java installer");
-    let status = Command::new("msiexec")
-        .arg("/i")
-        .arg(&download_path)
-        .status()
-        .map_err(|error| {
+    ui.step("Installing OpenJDK 26 for your Windows user");
+    let java_home = install_windows_openjdk_zip(&download_path)?;
+    let java_bin = java_home.join("bin").join("java.exe");
+    configure_windows_user_java_environment(ui, &java_home)?;
+    ui.success(format!("OpenJDK 26 installed at {}.", java_home.display()));
+    ui.hint("Future apps may need a new terminal or sign-out/sign-in to see the updated PATH.");
+    ui.info(format!(
+        "Minecraft Sync will use {} for this run.",
+        java_bin.display()
+    ));
+    Ok(())
+}
+
+fn install_windows_openjdk_zip(archive_path: &Path) -> AppResult<PathBuf> {
+    let install_parent = windows_java_install_parent()?;
+    let java_home = install_parent.join("jdk-26");
+
+    if java_home.exists() {
+        fs::remove_dir_all(&java_home).map_err(|error| {
             io_error(
                 error,
-                "start the Windows Java installer",
-                Some(&download_path),
+                "replace the existing OpenJDK install folder",
+                Some(&java_home),
             )
         })?;
+    }
+
+    fs::create_dir_all(&java_home)
+        .map_err(|error| io_error(error, "create the OpenJDK install folder", Some(&java_home)))?;
+
+    let file = File::open(archive_path)
+        .map_err(|error| io_error(error, "open the OpenJDK archive", Some(archive_path)))?;
+    let mut archive = ZipArchive::new(file).map_err(|error| {
+        AppError::new(
+            ErrorKind::AssetIntegrity,
+            "The downloaded OpenJDK archive could not be read.",
+        )
+        .with_detail(error.to_string())
+    })?;
+
+    let root_prefix = zip_root_prefix(&mut archive)?;
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index).map_err(|error| {
+            AppError::new(
+                ErrorKind::AssetIntegrity,
+                "A file inside the OpenJDK archive could not be read.",
+            )
+            .with_detail(error.to_string())
+        })?;
+
+        let enclosed_name = entry.enclosed_name().ok_or_else(|| {
+            AppError::new(
+                ErrorKind::AssetIntegrity,
+                "The OpenJDK archive tried to extract outside the install folder.",
+            )
+        })?;
+        let relative_name = enclosed_name
+            .strip_prefix(&root_prefix)
+            .unwrap_or(&enclosed_name);
+
+        if relative_name.as_os_str().is_empty() {
+            continue;
+        }
+
+        let output_path = java_home.join(relative_name);
+        if entry.name().ends_with('/') {
+            fs::create_dir_all(&output_path).map_err(|error| {
+                io_error(
+                    error,
+                    "create a folder from the OpenJDK archive",
+                    Some(&output_path),
+                )
+            })?;
+            continue;
+        }
+
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent).map_err(|error| {
+                io_error(
+                    error,
+                    "create folders for the OpenJDK install",
+                    Some(parent),
+                )
+            })?;
+        }
+
+        let mut output = File::create(&output_path)
+            .map_err(|error| io_error(error, "create an OpenJDK file", Some(&output_path)))?;
+        io::copy(&mut entry, &mut output)
+            .map_err(|error| io_error(error, "write OpenJDK files", Some(&output_path)))?;
+    }
+
+    let java_bin = java_home.join("bin").join("java.exe");
+    if !java_bin.is_file() {
+        return Err(AppError::new(
+            ErrorKind::JavaMissing,
+            "OpenJDK was extracted, but java.exe was not found where expected.",
+        )
+        .with_suggestion("Delete the downloaded OpenJDK zip and try the installer again.")
+        .with_detail(format!("Expected {}", java_bin.display())));
+    }
+
+    Ok(java_home)
+}
+
+fn zip_root_prefix(archive: &mut ZipArchive<File>) -> AppResult<PathBuf> {
+    for index in 0..archive.len() {
+        let entry = archive.by_index(index).map_err(|error| {
+            AppError::new(
+                ErrorKind::AssetIntegrity,
+                "The OpenJDK archive could not be inspected.",
+            )
+            .with_detail(error.to_string())
+        })?;
+
+        if let Some(path) = entry.enclosed_name() {
+            if let Some(first) = path.components().next() {
+                return Ok(PathBuf::from(first.as_os_str()));
+            }
+        }
+    }
+
+    Err(AppError::new(
+        ErrorKind::AssetIntegrity,
+        "The OpenJDK archive did not contain any files.",
+    ))
+}
+
+fn windows_java_install_parent() -> AppResult<PathBuf> {
+    let local_app_data = env::var_os("LOCALAPPDATA").ok_or_else(|| {
+        AppError::new(
+            ErrorKind::Other,
+            "The installer could not locate LOCALAPPDATA for your Windows user.",
+        )
+        .with_suggestion("Run the installer from your normal Windows user account.")
+    })?;
+
+    Ok(PathBuf::from(local_app_data)
+        .join("Programs")
+        .join("minecraft-sync")
+        .join("java"))
+}
+
+fn configure_windows_user_java_environment(ui: &Ui, java_home: &Path) -> AppResult<()> {
+    let java_bin = java_home.join("bin");
+    let java_home_value = java_home.to_string_lossy();
+    reg_add_user_env("JAVA_HOME", java_home_value.as_ref())?;
+
+    let current_path = read_windows_user_path().unwrap_or_default();
+    let old_java_entries = old_java_path_entries(&current_path, &java_bin);
+    let updated_path = if old_java_entries.is_empty() {
+        append_path_if_missing(&current_path, &java_bin)
+    } else if prompt_to_replace_old_java_path_entries(ui, &old_java_entries)? {
+        replace_old_java_path_entries(&current_path, &java_bin)
+    } else {
+        append_path_if_missing(&current_path, &java_bin)
+    };
+
+    reg_add_user_env("Path", &updated_path)?;
+    Ok(())
+}
+
+fn reg_add_user_env(name: &str, value: &str) -> AppResult<()> {
+    let status = Command::new("reg")
+        .arg("add")
+        .arg(r"HKCU\Environment")
+        .arg("/v")
+        .arg(name)
+        .arg("/t")
+        .arg("REG_EXPAND_SZ")
+        .arg("/d")
+        .arg(value)
+        .arg("/f")
+        .status()
+        .map_err(|error| io_error(error, "update your user environment variables", None))?;
 
     if !status.success() {
         return Err(AppError::new(
-            ErrorKind::JavaMissing,
-            "The Windows Java installer did not finish successfully.",
+            ErrorKind::PermissionDenied,
+            format!("Windows did not allow the installer to update user variable {name}."),
         )
-        .with_suggestion("Complete the MSI installer, then run Minecraft Sync again.")
-        .with_detail(format!("Installer exit status: {status}")));
+        .with_suggestion("You can still run this installer again after installing Java manually.")
+        .with_detail(format!("reg.exe exit status: {status}")));
     }
 
-    ui.success("The Java MSI installer finished.");
     Ok(())
+}
+
+fn prompt_to_replace_old_java_path_entries(ui: &Ui, old_entries: &[String]) -> AppResult<bool> {
+    ui.warn("I found older Java-looking entries in your user-level PATH:");
+    for entry in old_entries {
+        ui.info(format!("PATH entry: {entry}"));
+    }
+    ui.prompt_yes_no("Remove those old Java PATH entries and make OpenJDK 26 the default? [y/n]: ")
+}
+
+fn read_windows_user_path() -> Option<String> {
+    let output = Command::new("reg")
+        .arg("query")
+        .arg(r"HKCU\Environment")
+        .arg("/v")
+        .arg("Path")
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    parse_reg_query_value(&String::from_utf8_lossy(&output.stdout))
+}
+
+fn parse_reg_query_value(output: &str) -> Option<String> {
+    output.lines().find_map(|line| {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("Path") {
+            return None;
+        }
+
+        if let Some(index) = trimmed.find("REG_EXPAND_SZ") {
+            return Some(trimmed[index + "REG_EXPAND_SZ".len()..].trim().to_string());
+        }
+
+        trimmed
+            .find("REG_SZ")
+            .map(|index| trimmed[index + "REG_SZ".len()..].trim().to_string())
+    })
+}
+
+fn append_path_if_missing(current_path: &str, new_entry: &Path) -> String {
+    let new_entry = new_entry.to_string_lossy();
+    let already_present = current_path
+        .split(';')
+        .any(|entry| entry.trim().eq_ignore_ascii_case(new_entry.as_ref()));
+
+    if already_present {
+        current_path.to_string()
+    } else if current_path.trim().is_empty() {
+        new_entry.into_owned()
+    } else {
+        format!("{current_path};{new_entry}")
+    }
+}
+
+fn replace_old_java_path_entries(current_path: &str, new_entry: &Path) -> String {
+    let new_entry = new_entry.to_string_lossy();
+    let mut entries = vec![new_entry.into_owned()];
+
+    for entry in current_path
+        .split(';')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+    {
+        if entry.eq_ignore_ascii_case(&entries[0]) || is_probable_java_path_entry(entry) {
+            continue;
+        }
+        entries.push(entry.to_string());
+    }
+
+    entries.join(";")
+}
+
+fn old_java_path_entries(current_path: &str, new_entry: &Path) -> Vec<String> {
+    let new_entry = new_entry.to_string_lossy();
+    current_path
+        .split(';')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .filter(|entry| !entry.eq_ignore_ascii_case(new_entry.as_ref()))
+        .filter(|entry| is_probable_java_path_entry(entry))
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+fn is_probable_java_path_entry(entry: &str) -> bool {
+    let normalized = entry.replace('/', "\\").to_ascii_lowercase();
+    let looks_like_java = normalized.contains("\\java\\")
+        || normalized.contains("\\jdk")
+        || normalized.contains("\\jre")
+        || normalized.contains("javapath");
+    looks_like_java && (normalized.ends_with("\\bin") || normalized.contains("javapath"))
 }
 
 fn download_and_open_macos_java_installer(ui: &Ui, client: &Client) -> AppResult<()> {
@@ -1219,7 +1526,7 @@ fn guide_linux_java_install(ui: &Ui) -> AppResult<()> {
             ErrorKind::JavaMissing,
             "Java was not found, and the installer could not recognize your Linux package manager.",
         )
-        .with_suggestion("Install OpenJDK 21 or newer manually, then rerun the installer.")
+        .with_suggestion("Install OpenJDK 25 or newer manually, then rerun the installer.")
     })?;
 
     ui.hint("Run this command in another terminal to install Java:");
@@ -1236,9 +1543,9 @@ fn guide_linux_java_install(ui: &Ui) -> AppResult<()> {
 
 fn detect_linux_java_install_command() -> Option<&'static str> {
     if command_exists("apt-get") {
-        Some("sudo apt-get update && sudo apt-get install -y openjdk-21-jdk")
+        Some("sudo apt-get update && sudo apt-get install -y openjdk-25-jdk")
     } else if command_exists("dnf") {
-        Some("sudo dnf install -y java-21-openjdk")
+        Some("sudo dnf install -y java-25-openjdk")
     } else if command_exists("pacman") {
         Some("sudo pacman -S --needed jdk-openjdk")
     } else {
@@ -1289,7 +1596,7 @@ fn download_support_file(
     destination: &Path,
     label: &str,
 ) -> AppResult<()> {
-    let response = client.get(url).send().map_err(|error| {
+    let mut response = client.get(url).send().map_err(|error| {
         network_error(
             &format!("The installer could not download {label}."),
             url,
@@ -1305,7 +1612,14 @@ fn download_support_file(
         ));
     }
 
-    let bytes = response.bytes().map_err(|error| {
+    let mut file = File::create(destination).map_err(|error| {
+        io_error(
+            error,
+            "create a downloaded installer file",
+            Some(destination),
+        )
+    })?;
+    io::copy(&mut response, &mut file).map_err(|error| {
         AppError::new(
             ErrorKind::Network,
             format!("The download for {label} started, but it did not finish cleanly."),
@@ -1314,8 +1628,6 @@ fn download_support_file(
         .with_detail(error.to_string())
     })?;
 
-    fs::write(destination, &bytes)
-        .map_err(|error| io_error(error, "write a downloaded installer", Some(destination)))?;
     Ok(())
 }
 
@@ -1467,7 +1779,7 @@ fn install_fabric(
                     ErrorKind::JavaMissing,
                     "Java disappeared before Fabric could be installed.",
                 )
-                .with_suggestion("Install Java 21 or newer, then run the installer again.")
+                .with_suggestion("Install OpenJDK 26, then run the installer again.")
             } else {
                 io_error(error, "start the Fabric installer", Some(java_command))
             }
@@ -1480,7 +1792,7 @@ fn install_fabric(
             ErrorKind::FabricInstall,
             "Fabric could not be installed automatically.",
         )
-        .with_suggestion("Make sure Java 21 or newer is installed.")
+        .with_suggestion("Make sure Java 25 or newer is installed.")
         .with_suggestion("Open Minecraft once with the target launcher, then rerun the installer.")
         .with_detail(detail));
     }
@@ -1939,12 +2251,66 @@ mod tests {
     }
 
     #[test]
+    fn parse_reg_query_value_reads_user_path() {
+        let output = r#"
+HKEY_CURRENT_USER\Environment
+    Path    REG_EXPAND_SZ    C:\Tools;C:\Java\bin
+"#;
+
+        assert_eq!(
+            parse_reg_query_value(output),
+            Some(r"C:\Tools;C:\Java\bin".to_string())
+        );
+    }
+
+    #[test]
+    fn append_path_if_missing_avoids_duplicates() {
+        let current =
+            r"C:\Tools;C:\Users\Alex\AppData\Local\Programs\minecraft-sync\java\jdk-26\bin";
+        let java_bin =
+            Path::new(r"C:\Users\Alex\AppData\Local\Programs\minecraft-sync\java\jdk-26\bin");
+
+        assert_eq!(append_path_if_missing(current, java_bin), current);
+        assert_eq!(
+            append_path_if_missing("C:\\Tools", java_bin),
+            r"C:\Tools;C:\Users\Alex\AppData\Local\Programs\minecraft-sync\java\jdk-26\bin"
+        );
+    }
+
+    #[test]
+    fn old_java_path_entries_detects_java_bins_only() {
+        let current = r"C:\Tools;C:\Program Files\Java\jdk-17\bin;C:\Windows\System32;C:\Program Files\Common Files\Oracle\Java\javapath";
+        let java_bin =
+            Path::new(r"C:\Users\Alex\AppData\Local\Programs\minecraft-sync\java\jdk-26\bin");
+
+        assert_eq!(
+            old_java_path_entries(current, java_bin),
+            vec![
+                r"C:\Program Files\Java\jdk-17\bin".to_string(),
+                r"C:\Program Files\Common Files\Oracle\Java\javapath".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn replace_old_java_path_entries_prepends_new_jdk_and_keeps_unrelated_paths() {
+        let current = r"C:\Tools;C:\Program Files\Java\jdk-17\bin;C:\Windows\System32";
+        let java_bin =
+            Path::new(r"C:\Users\Alex\AppData\Local\Programs\minecraft-sync\java\jdk-26\bin");
+
+        assert_eq!(
+            replace_old_java_path_entries(current, java_bin),
+            r"C:\Users\Alex\AppData\Local\Programs\minecraft-sync\java\jdk-26\bin;C:\Tools;C:\Windows\System32"
+        );
+    }
+
+    #[test]
     fn help_text_mentions_preflight_and_main_flags() {
         let help = help_text();
 
         assert!(help.contains("--minecraft-dir"));
         assert!(help.contains("--skip-fabric"));
-        assert!(help.contains("Java 21+"));
+        assert!(help.contains("Java 25+"));
         assert!(help.contains("guided path recovery"));
     }
 }
